@@ -1,0 +1,6 @@
+name "coda-d"
+description "Coda bindings, NLP stack for Russian and English language"
+authors "Denis Feklushkin"
+copyright "Copyright © 2017, Denis Feklushkin"
+license "proprietary"
+libs "tokenizer" "sentence-splitter" "syntax-parser"
