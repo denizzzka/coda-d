@@ -1,107 +1,381 @@
 module coda;
 
 import core.stdc.stddef: wchar_t;
+import std.conv: to;
+import std.string: toStringz;
 
-extern(C++, std)
+class SentenceSplitter
 {
-	//~ extern(C++, class) __gshared struct shared_ptr(T)
-	//~ {
-		//~ // FIXME: dirty hack, it is need to create shared_ptr by std::make_shared?2
-		//~ size_t* ptr0;
-		//~ size_t* ptr1;
-		//~ size_t* ptr2;
+    private cSentenceSplitter* _splitter;
 
-		//~ T* get() // FIXME: dirty hack
-		//~ {
-			//~ return cast(T*) ptr0;
-		//~ }
-	//~ }
+    this(in Tools.Language language)
+    {
+        _splitter = cSentenceSplitter_create(language);
+    }
 
-	extern(C++, class) struct basic_string
-	(
-		charT,
-		traits = char_traits!charT,
-		Alloc = allocator!charT
-	)
-	{
-		void resize(size_t n);
-	}
+    ~this()
+    {
+        cSentenceSplitter_destroy(_splitter);
+    }
 
-	struct char_traits(charT);
+    /// @returns Sentences array
+    Rstring[] split(Tstring, Rstring = string)(in Tstring line)
+    {
+        const wideString = line.to!( immutable(wchar_t)[] );
+        auto borders = split(wideString);
 
-	extern(C++, class) struct allocator(T);
+        Rstring[] ret;
 
-	alias Wstring = basic_string!wchar_t;
+        size_t prev = 0;
 
-	class vector
-	(
-		T,
-		Allocator = allocator!T
-	);
+        foreach(b; borders)
+        {
+            const curr = b + 1;
+            ret ~= wideString[prev .. curr].to!Rstring;
+            prev = curr;
+        }
+
+        return ret;
+    }
+
+    /// @returns Borders
+    size_t[] split(in immutable(wchar_t)[] line)
+    {
+        size_t* borders;
+        size_t num = cSentenceSplitter_split(_splitter, line.ptr, line.length, &borders);
+
+        version(assert)
+        {
+            if(num != 0)
+                assert(borders !is null);
+            else
+                assert(borders is null);
+        }
+
+        size_t[] ret = new size_t[num];
+
+        foreach(i, ref symbolNum; ret)
+            symbolNum = borders[i];
+
+        free_mem(borders);
+
+        return ret;
+    }
 }
 
-extern(C++, Tools)
+class Tokenizer
 {
-	enum Language
-	{
-		RU,
-		EN,
-		EN_FAST
-	};
+    private cTokenizer* _tokenizer;
+
+    this(in Tools.Language language)
+    {
+        _tokenizer = cTokenizer_create(language);
+    }
+
+    ~this()
+    {
+        cTokenizer_destroy(_tokenizer);
+    }
+
+    TokensStorage tokenize(Tstring)(Tstring lineToSplit)
+    {
+        const s = lineToSplit.toWideStr;
+
+        cTokensStorage* storage = cTokenizer_tokenize(_tokenizer, s.ptr, s.length);
+
+        return new TokensStorage(storage);
+    }
 }
 
-extern(C++, _sentence_splitter)
+class TokensStorage
 {
-	class SentenceSplitter
-	{
-		//~ this(Tools.Language); // FIXME: unused in D
+    private cTokensStorage* _storage;
 
-		//~ vector!size_t split(const ref Wstring);
-	}
+    private this(cTokensStorage* s)
+    {
+        _storage = s;
+    }
+
+    ~this()
+    {
+        cTokensStorage_destroy(_storage);
+    }
+}
+
+class DisambiguatedDataStorage
+{
+    private cDisambiguatedDataStorage* _storage;
+
+    private this(cDisambiguatedDataStorage* s)
+    {
+        _storage = s;
+    }
+
+    ~this()
+    {
+        cDisambiguatedDataStorage_destroy(_storage);
+    }
+}
+
+class Disambiguator
+{
+    private cDisambiguator* _disambiguator;
+
+    this(in Tools.Language language)
+    {
+        _disambiguator = cDisambiguator_create(language);
+    }
+
+    ~this()
+    {
+        cDisambiguator_destroy(_disambiguator);
+    }
+
+    DisambiguatedDataStorage disambiguate(TokensStorage ts)
+    {
+        auto r = cDisambiguator_disambiguate(_disambiguator, ts._storage);
+
+        return new DisambiguatedDataStorage(r);
+    }
+}
+
+class SyntaxParser
+{
+    private cSyntaxParser* _syntaxParser;
+
+    this(in Tools.Language language)
+    {
+        PrepareConsole(language);
+
+        _syntaxParser = cSyntaxParser_create(language);
+    }
+
+    ~this()
+    {
+        cSyntaxParser_destroy(_syntaxParser);
+    }
+
+    SyntaxTree parse(DisambiguatedDataStorage ds)
+    {
+        auto r = cSyntaxParser_parse(_syntaxParser, ds._storage);
+
+        return new SyntaxTree(r);
+    }
+}
+
+class SyntaxTree
+{
+    private cSyntaxTree* _tree;
+
+    private this(cSyntaxTree* t)
+    {
+        _tree = t;
+    }
+
+    ~this()
+    {
+        cSyntaxTree_destroy(_tree);
+    }
+
+    int getRootIndex() const
+    {
+        return cSyntaxTree_getRootIndex(_tree);
+    }
+
+    int getParentIndex(int nodeIndex) const
+    {
+        return cSyntaxTree_getParentIndex(_tree, nodeIndex);
+    }
+
+    SyntaxNode getNodeByIndex(int idx)
+    {
+        return SyntaxNode(
+            cSyntaxTree_getNodeByIndex(_tree, idx)
+        );
+    }
+}
+
+struct SyntaxNode
+{
+    private cSyntaxNode* _node;
+    private cNodeData _nd;
+
+    this(cSyntaxNode* n)
+    {
+        _node = n;
+        _nd = cSyntaxNode_get_cNodeData(_node);
+    }
+
+    int[] getChildrenIndexes() const
+    {
+        auto v = cSyntaxNode_getChildrenIndexes(_node);
+
+        return v.cIntVector_getPtr[0 .. v.cIntVector_getLength].dup; // TODO: move to separate function
+    }
+
+    T content(T = string)() { return _nd.content.cws2wch.to!T; }
+    bool isNextSpace() const { return _nd.isNextSpace; }
+    T lemma(T = string)() { return _nd.lemma.cws2wch.to!T; }
+    T label(T = string)() { return _nd.label.cws2wch.to!T; }
+    double weight() const { return _nd.weight; }
+    int lemmaId() const { return _nd.lemmaId; }
+
+    T[] punctuation(T = string)()
+    {
+        auto ret = new T[_nd.punctuation_size];
+
+        foreach(i, ref str; ret)
+            str = _node.cSyntaxNode_getPunctuationByIndex(i).cws2wch.to!T;
+
+        return ret;
+    }
+
+    string toString()
+    {
+        return
+            "content="~content.to!string~
+            " punctuation="~punctuation.to!string~
+            " lemma="~lemma.to!string~
+            " label="~label.to!string~
+            " weight="~weight.to!string~
+            " lemmaId="~lemmaId.to!string~
+            " isNextSpace="~isNextSpace.to!string;
+    }
+}
+
+/// Convert cWstring to wchar_t array
+private wchar_t[] cws2wch(cWstring* cws)
+{
+    return cws.cWstring_getPtr[0 .. cws.cWstring_getLength];
+}
+
+private const (immutable(wchar_t)[]) toWideStr(Tstr)(Tstr s)
+{
+    return s.to!( immutable(wchar_t)[] );
+}
+
+extern(C++, Tools) @nogc
+{
+    public enum Language
+    {
+        RU,
+        EN,
+        EN_FAST
+    };
+
+    private void PrepareConsole(Language language);
+}
+
+private @nogc
+{
+    extern(C++, ccoda)
+    {
+        struct cSentenceSplitter;
+        struct cTokenizer;
+        struct cTokensStorage;
+        struct cDisambiguator;
+        struct cDisambiguatedDataStorage;
+        struct cSyntaxParser;
+        struct cSyntaxTree;
+        struct cSyntaxNode;
+        struct cIntVector;
+        struct cWstring;
+
+        struct cNodeData
+        {
+            cWstring* content;
+            size_t punctuation_size;
+            bool isNextSpace;
+            cWstring* lemma; /**< initial form of the token*/
+            cWstring* label; /**< morphology label of the token*/
+            double weight; /**< weight assigned to the label by the classifier*/
+            int lemmaId; /**< index of lemma in database*/
+        };
+    }
+
+    extern(C++)
+    {
+        void free_mem(void* buf_ptr); // TODO: remove it
+
+        size_t cIntVector_getLength(const(cIntVector)* iv);
+        int* cIntVector_getPtr(const(cIntVector)* iv);
+
+        size_t cWstring_getLength(const cWstring* v);
+        wchar_t* cWstring_getPtr(cWstring* v);
+
+        cSentenceSplitter* cSentenceSplitter_create(Tools.Language);
+        void cSentenceSplitter_destroy(cSentenceSplitter*);
+        size_t cSentenceSplitter_split(cSentenceSplitter* splitter, const(wchar_t)* line_to_split, size_t line_length, size_t** borders);
+
+        cTokenizer* cTokenizer_create(Tools.Language language);
+        void cTokenizer_destroy(cTokenizer* tokenizer);
+        cTokensStorage* cTokenizer_tokenize(cTokenizer* tokenizer, const(wchar_t)* line_to_split, size_t line_length);
+
+        void cTokensStorage_destroy(cTokensStorage* ts);
+
+        cDisambiguator* cDisambiguator_create(Tools.Language language);
+        void cDisambiguator_destroy(cDisambiguator* d);
+        cDisambiguatedDataStorage* cDisambiguator_disambiguate(cDisambiguator* d, cTokensStorage* parsedTokens);
+
+        void cDisambiguatedDataStorage_destroy(cDisambiguatedDataStorage* ds);
+
+        cSyntaxParser* cSyntaxParser_create(Tools.Language language);
+        void cSyntaxParser_destroy(cSyntaxParser* sp);
+        cSyntaxTree* cSyntaxParser_parse(cSyntaxParser* syntax_parser, cDisambiguatedDataStorage* dds);
+
+        void cSyntaxTree_destroy(cSyntaxTree* t);
+
+        cSyntaxNode* cSyntaxTree_getNodeByIndex(cSyntaxTree* tree, size_t idx);
+        int cSyntaxTree_getRootIndex(const(cSyntaxTree)* tree);
+        int cSyntaxTree_getParentIndex(const(cSyntaxTree)* tree, int nodeIndex);
+
+        cIntVector* cSyntaxNode_getChildrenIndexes(const(cSyntaxNode)* node);
+        cNodeData cSyntaxNode_get_cNodeData(cSyntaxNode* node);
+        cWstring* cSyntaxNode_getPunctuationByIndex(cSyntaxNode* node, size_t idx);
+    }
 }
 
 unittest
 {
-	{
-		import core.stdc.locale;
+    {
+        import core.stdc.locale;
 
-		setlocale(LC_ALL,"");
+        setlocale(LC_ALL, "");
 
-		//~ auto spltr = new _sentence_splitter.SentenceSplitter(Tools.Language.RU);
+        auto splitter = new SentenceSplitter(Tools.Language.RU);
 
-		dstring input = "Сэмюэл Л. Джексон и Роберт Дауни мл. снова взялись за своё. Они стали грабить банки."; //TODO: add checking of dchar == wchar_t
+        string input = "Мальчик квадратный ковер выбивает. Дедушка круглый арбуз доедает... Тов. лейтенант, принесите 2 кг. арбузов!";
 
-		Wstring s;
+        auto res = splitter.split(input);
 
-		//~ spltr.split(s);
+        assert(res.length == 3);
+        assert(res[0] == "Мальчик квадратный ковер выбивает.");
+        assert(res[1] == " Дедушка круглый арбуз доедает...");
+        assert(res[2] == " Тов. лейтенант, принесите 2 кг. арбузов!");
 
-		//~ for(;;){}
+        auto tokenizer = new Tokenizer(Tools.Language.RU);
+        auto tokens = tokenizer.tokenize("Ежихи, постойте!");
 
-		//~ vector!size_t borders; // = spltr.split(input);
-		//~ assert(borders.size == 2);
+        auto disambiguator = new Disambiguator(Tools.Language.RU);
+        auto disambiguated = disambiguator.disambiguate(tokens);
 
-		//~ input = L"Всё обошлось без серьёзных потерь и FILM:[ Принц полукровка ] продолжил лидировать, заработав 43,4 млн. долларов в 13000 кинозалах в 64 территориях за уик-энд, вместе с которыми его общая касса выросла до 493 млн. долларов международных сборов и 747,7 млн. общемировых.";
-		//~ borders = spltr.split(input);
-		//~ assert(borders.size == 1);
-	}
+        auto syntax_parser = new SyntaxParser(Tools.Language.RU);
+        auto tree = syntax_parser.parse(disambiguated);
+        auto root = tree.getRootIndex;
+        assert(root == 1);
 
-	{
-		//~ tokenizer = Tokenizer("RU")
-		//~ disambiguator = Disambiguator("RU")
-		//~ syntax_parser = SyntaxParser("RU")
+        auto rootNode = tree.getNodeByIndex(root);
+        assert(rootNode.lemma == "постоять");
 
-		//~ #~ sentence = u'МИД пригрозил ограничить поездки американских дипломатов по России.'
-		//~ #~ sentence = u'Вечером на обед были язычки колибри. В них 80 грамм углеводов, 10 граммов белка, жиров 5 грамм и 2 гр. золы. Всего 36 калорий'
-		//~ #~ sentence = u'Я не хочу идти в бассейн потому что делаю распознавание текста для бота.'
-		//~ #~ sentence = u'Мы с Мурзиком пошли доедать корм, жать штангу и гантели.'
-		//~ #~ sentence = u'Съешь ещё этих мягких французских булок, да выпей же чаю.'
-		//~ #~ sentence = u'Мама мыла раму.'
-		//~ sentence = u'"закажи 3 куска сыра по килу, ну и рыбы ещё 2 кг'
-		//~ tokens = tokenizer.tokenize(sentence)
-		//~ disambiguated = disambiguator.disambiguate(tokens)
-		//~ tree = syntax_parser.parse(disambiguated)
+        auto childrenIdxs = rootNode.getChildrenIndexes;
+        assert(childrenIdxs == [0]);
 
-		//~ print tree.to_string()
-		//~ tree.draw(dot_file="/tmp/tree1.dot", show=True)
-	}
+        auto childNode = tree.getNodeByIndex(childrenIdxs[0]);
+        assert(childNode.lemma == "ежиха");
+        assert(childNode.label == "S@МН@ЖЕН@ИМ@ОД");
+        assert(childNode.punctuation == [","]);
+
+        auto parentIdx = tree.getParentIndex(childrenIdxs[0]);
+        assert(root == parentIdx);
+    }
 }
