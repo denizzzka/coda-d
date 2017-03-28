@@ -48,8 +48,6 @@ class SentenceSplitter
         {
             if(num != 0)
                 assert(borders !is null);
-            else
-                assert(borders is null);
         }
 
         size_t[] ret = new size_t[num];
@@ -192,6 +190,30 @@ class SyntaxTree
         return SyntaxNode(
             cSyntaxTree_getNodeByIndex(_tree, idx)
         );
+    }
+
+    override string toString()
+    {
+        return toStringRecursive(getRootIndex, 0);
+    }
+
+    private string toStringRecursive(int currIdx, size_t depth)
+    {
+        auto node = getNodeByIndex(currIdx);
+
+        string offset;
+
+        foreach(i; 0 .. depth)
+            offset ~= "  ";
+
+        string ret = offset ~ node.toString ~ "\n";
+
+        auto children = node.getChildrenIndexes;
+
+        foreach(childIdx; children)
+            ret ~= toStringRecursive(childIdx, depth + 1);
+
+        return ret;
     }
 }
 
