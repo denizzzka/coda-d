@@ -194,26 +194,39 @@ class SyntaxTree
 
     override string toString()
     {
-        return toStringRecursive(getRootIndex, 0);
+        string ret;
+
+        void dg(int currIdx, SyntaxNode* node, size_t depth)
+        {
+            string offset;
+
+            foreach(i; 0 .. depth)
+                offset ~= "  ";
+
+            ret ~= offset ~ node.toString ~ "\n";
+        }
+
+        recursive(&dg);
+
+        return ret;
     }
 
-    private string toStringRecursive(int currIdx, size_t depth)
+    alias recursiveDg = void delegate(int currIdx, SyntaxNode* node, size_t depth);
+
+    void recursive(recursiveDg dg)
+    {
+        recursive(getRootIndex, 0, dg);
+    }
+
+    private void recursive(int currIdx, size_t depth, recursiveDg dg)
     {
         auto node = getNodeByIndex(currIdx);
-
-        string offset;
-
-        foreach(i; 0 .. depth)
-            offset ~= "  ";
-
-        string ret = offset ~ node.toString ~ "\n";
+        dg(currIdx, &node, depth);
 
         auto children = node.getChildrenIndexes;
 
         foreach(childIdx; children)
-            ret ~= toStringRecursive(childIdx, depth + 1);
-
-        return ret;
+            recursive(childIdx, depth + 1, dg);
     }
 }
 
