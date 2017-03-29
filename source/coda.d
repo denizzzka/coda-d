@@ -206,19 +206,19 @@ class SyntaxTree
             ret ~= offset ~ node.toString ~ "\n";
         }
 
-        recursive(&dg);
+        recursiveTraversal(&dg);
 
         return ret;
     }
 
     alias recursiveDg = void delegate(int currIdx, SyntaxNode* node, size_t depth);
 
-    void recursive(recursiveDg dg)
+    void recursiveTraversal(recursiveDg dg)
     {
-        recursive(getRootIndex, 0, dg);
+        recursiveTraversal(getRootIndex, dg, 0);
     }
 
-    private void recursive(int currIdx, size_t depth, recursiveDg dg)
+    void recursiveTraversal(int currIdx, recursiveDg dg, size_t depth)
     {
         auto node = getNodeByIndex(currIdx);
         dg(currIdx, &node, depth);
@@ -226,7 +226,7 @@ class SyntaxTree
         auto children = node.getChildrenIndexes;
 
         foreach(childIdx; children)
-            recursive(childIdx, depth + 1, dg);
+            recursiveTraversal(childIdx, dg, depth + 1);
     }
 }
 
