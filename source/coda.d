@@ -375,7 +375,18 @@ unittest
     {
         import core.stdc.locale;
 
-        setlocale(LC_ALL, "");
+        version(Windows)
+        {
+            setlocale(LC_ALL, "");
+        }
+        else version(Posix)
+        {
+            setlocale(LC_ALL, "ru_RU.UTF-8");
+        }
+        else
+        {
+            static assert(false, "Version unsupported");
+        }
 
         auto splitter = new SentenceSplitter(Tools.Language.RU);
 
