@@ -399,7 +399,7 @@ private @nogc
         cIntVector* cSyntaxNode_getChildrenIndexes(const(cSyntaxNode)* node);
         cNodeData cSyntaxNode_get_cNodeData(cSyntaxNode* node);
         cWstring* cSyntaxNode_getPunctuationByIndex(cSyntaxNode* node, size_t idx);
-        cWstring* cSyntaxNode_getSplittedLabelPieceByIndex(const(cSyntaxNode)* sNode, size_t idx);
+        cWstring* cSyntaxNode_getSplittedLabelPieceByIndex(cSyntaxNode* sNode, size_t idx);
     }
 }
 
