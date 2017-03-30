@@ -279,6 +279,23 @@ struct SyntaxNode
         return __getLabelPieceByIndex(idx).to!T;
     }
 
+    struct LabelRange(T)
+    {
+        private SyntaxNode node;
+        private size_t curr;
+
+        private this(SyntaxNode n)
+        {
+            node = n;
+        }
+
+        auto front(){ return node.getLabelPieceByIndex!T(curr); }
+        void popFront(){ ++curr; }
+        bool empty(){ return curr >= node._nd.splittedLabel_size; }
+    }
+
+    auto labelsRange(T = string)(){ return LabelRange!T(this); }
+
     string toString()
     {
         return
@@ -437,6 +454,13 @@ unittest
         assert(childNode.label == "S@МН@ЖЕН@ИМ@ОД");
         assert(childNode.punctuation == [","]);
         assert(childNode.getLabelPieceByIndex(2) == "ЖЕН");
+
+        auto rg = childNode.labelsRange;
+
+        assert(!rg.empty);
+        assert(rg.front == "S");
+        rg.popFront;
+        assert(rg.front == "МН");
 
         auto parentIdx = tree.getParentIndex(childrenIdxs[0]);
         assert(root == parentIdx);
