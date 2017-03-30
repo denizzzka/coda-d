@@ -265,6 +265,20 @@ struct SyntaxNode
         return ret;
     }
 
+    private wchar_t[] __getLabelPieceByIndex(size_t idx)
+    {
+        assert(idx < _nd.splittedLabel_size);
+
+        auto cwstr = cSyntaxNode_getSplittedLabelPieceByIndex(_node, idx);
+
+        return cwstr.cWstring_getPtr[0 .. cwstr.cWstring_getLength];
+    }
+
+    T getLabelPieceByIndex(T = string)(size_t idx)
+    {
+        return __getLabelPieceByIndex(idx).to!T;
+    }
+
     string toString()
     {
         return
@@ -325,6 +339,7 @@ private @nogc
             cWstring* label; /**< morphology label of the token*/
             double weight; /**< weight assigned to the label by the classifier*/
             int lemmaId; /**< index of lemma in database*/
+            size_t splittedLabel_size;
         };
     }
 
@@ -367,6 +382,7 @@ private @nogc
         cIntVector* cSyntaxNode_getChildrenIndexes(const(cSyntaxNode)* node);
         cNodeData cSyntaxNode_get_cNodeData(cSyntaxNode* node);
         cWstring* cSyntaxNode_getPunctuationByIndex(cSyntaxNode* node, size_t idx);
+        cWstring* cSyntaxNode_getSplittedLabelPieceByIndex(const(cSyntaxNode)* sNode, size_t idx);
     }
 }
 
@@ -420,6 +436,7 @@ unittest
         assert(childNode.lemma == "ежиха");
         assert(childNode.label == "S@МН@ЖЕН@ИМ@ОД");
         assert(childNode.punctuation == [","]);
+        assert(childNode.getLabelPieceByIndex(2) == "ЖЕН");
 
         auto parentIdx = tree.getParentIndex(childrenIdxs[0]);
         assert(root == parentIdx);
