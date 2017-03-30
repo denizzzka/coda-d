@@ -455,12 +455,19 @@ unittest
         assert(childNode.punctuation == [","]);
         assert(childNode.getLabelPieceByIndex(2) == "ЖЕН");
 
-        auto rg = childNode.labelsRange;
+        {
+            auto rg = childNode.labelsRange;
 
-        assert(!rg.empty);
-        assert(rg.front == "S");
-        rg.popFront;
-        assert(rg.front == "МН");
+            assert(!rg.empty);
+            assert(rg.front == "S");
+            rg.popFront;
+            rg.popFront;
+            assert(rg.front == "ЖЕН");
+            rg.popFront;
+            rg.popFront;
+            rg.popFront;
+            assert(rg.empty);
+        }
 
         auto parentIdx = tree.getParentIndex(childrenIdxs[0]);
         assert(root == parentIdx);
